@@ -1,47 +1,36 @@
-pipeline{
-    
-    environment {
-        registry = "skankat/surveyjar"
-        registryCredential = 'docker'
-        def dateTag = new Date().format("yyyyMMdd-HHmmss")
-	}
-agent any
-    tools{
-        maven 'Maven 3.8.6'
-    }
+pipeline {
+    agent any
     stages{
-     stage('Maven clean & Install'){
-        steps{
-            script{
-                sh 'mvn clean'
-                sh 'mvn install'
+        stage('Install Maven'){
+            steps{
+                tool name: 'Maven 3.9.6', type: 'maven'
             }
         }
-     }
-     stage('Build Docker Image and Push'){
-        steps{
-            script {
-                  docker.withRegistry('',registryCredential) {
-                        def image = docker.build('skankat/surveyjar:'+ dateTag, '. --no-cache')
-                        docker.withRegistry('',registryCredential) {
-                            image.push()
-                        }
-                    }
+        stage('Getting code from git repository'){
+            steps{
+                checkout([$class: 'GitSCM', branches: [[name:'*/main']], extensions: [], userRemoteConfigs: [[url:'https://github.com/SushmaKankatala/SWE645-hw3.git']]])
             }
         }
-     }
-      stage('Deploying to single node in Rancher'){
-        steps{
-            script {
-                  sh 'kubectl set image deployment/clusterdep container-swe645hw3=skankat/surveyjar:'+dateTag
+        stage('Docker image-Building'){
+            steps{
+                    sh 'rm -rf *.jar'
+                    sh 'ls -R'
+                    sh 'docker build -t surveyjar .'
+                    sh 'docker image tag surveyjar skankat/surveyjar:latest'
             }
         }
-     }
-     }
- 
-  post {
-	  always {
-			sh 'docker logout'
-		}
-	}    
+        stage('Pushing the docker image to hub'){
+            steps{
+                sh 'docker login -u skankat -p Masonchi%04'
+                sh 'docker image push skankat/surveyjar:latest'
+            }
+            
+        }
+        stage('Deploy to Rancher Cluster'){
+            steps{
+                sh 'kubectl set image deployment/ranchdep container-swe645=skankat/surveyjar:latest -n ranchspace'
+
+            }
+    }
+}
 }
